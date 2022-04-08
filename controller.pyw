@@ -28,6 +28,9 @@ class App(Tk):
         # Channels to create labels for
         self.channels = [0, 1, 8, 12, 13]
 
+        # Initialize Channels to act as thermocouples with standard parameters.
+        Controller.initialize_thermocouple_read(self.channels)
+
         # Create labels to identity channels
         self.labels = []
         for i in range(len(self.channels)):
@@ -154,7 +157,7 @@ class Controller:
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.ADCHANTYPE,
                 AiChanType.TC)
-            # Set thermocouple type to type K
+            # Set thermocouple type
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.CHANTCTYPE,
                 thermocouple_type)
@@ -162,7 +165,7 @@ class Controller:
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.TEMPSCALE,
                 TempScale.CELSIUS)
-            # Set data rate to 60Hz
+            # Set data rate
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.ADDATARATE, rate)
 
@@ -173,7 +176,7 @@ class Controller:
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.ADCHANTYPE,
                     AiChanType.TC)
-                # Set thermocouple type to type K
+                # Set thermocouple type
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.CHANTCTYPE,
                     thermocouple_type)
@@ -181,7 +184,7 @@ class Controller:
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.TEMPSCALE,
                     TempScale.CELSIUS)
-                # Set data rate to 60Hz
+                # Set data rate
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.ADDATARATE, rate)
 
@@ -208,7 +211,7 @@ class Controller:
     @staticmethod
     def thermocouple_average_read(channel, number_of_runs_to_average, board_num=0):
         """
-        Function to take average of a specified number of thermocouple readings
+        Function to take average of a specified number of thermocouple readings. Recommend using just instantaneous.
         :param board_num: Board number
         :param channel: Either single channel or list of channels
         :param number_of_runs_to_average: Runs to average
@@ -222,7 +225,10 @@ class Controller:
                                  range(number_of_runs_to_average)]
             return np.average(temperature_array)
 
+        # If channel is a list
         if type(channel) is list:
+
+            # Repeats process for a single value channel for every channel in list
             average_temperature_array = []
             for i in channel:
                 temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for x in
@@ -232,7 +238,7 @@ class Controller:
             return average_temperature_array
 
 
-# Runs app and updates labels every 250ms
+# Runs app and updates labels every 500ms
 app = App(500)
 app.update_labels()
 app.mainloop()
