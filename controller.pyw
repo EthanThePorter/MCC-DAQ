@@ -13,15 +13,21 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib import style
 
+import time
+
 
 class App(Tk):
-    """
-    Main App class.
-    """
 
     def __init__(self, refresh_time, *args, **kwargs):
-        # __init__ function for class Tk
+        """
+        Main App class
+
+        :param refresh_time: Time in ms for refresh
+        """
         Tk.__init__(self, *args, **kwargs)
+
+        # Initializes start time
+        self.start_time = time.time()
 
         # Initializes time to update labels
         self.refresh_time = refresh_time
@@ -37,6 +43,15 @@ class App(Tk):
 
         # Configure channels to read thermocouples
         Controller.initialize_thermocouple_read(self.channels)
+
+        # Initializes lists for temperature and time to be saved to
+        self.temperature = [[] for x in self.channels]
+        self.runtime = []
+
+        # Create plot
+        self.plot_frame = Frame(self)
+        self.plot_frame.grid(row=0, rowspan=len(self.channels), column=3, columnspan=3)
+        self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)")
 
         # Create labels to identity channels
         self.labels = []
@@ -59,17 +74,51 @@ class App(Tk):
     def update_labels(self):
 
         # Gets temperatures and round them
-        temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 2)
+        current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
+
+        #Gets time and rounds - adds to runtime array
+        relative_time = np.round(time.time() - self.start_time, 1)
+        self.runtime.append(relative_time)
+
+        # Initializes max_temperature and min_temperature for y-axis limits with arbitrary value
+        max_temperature = current_temperatures[0]
+        min_temperature = current_temperatures[0]
+
+        # Appends temperature data to main array and checks for new max and min
+        for x in range(len(self.channels)):
+
+            # Appends current temperatures to a 2D list
+            self.temperature[x].append(current_temperatures[x])
+
+            # Updates max and min temperature
+            if current_temperatures[x] > max_temperature:
+                max_temperature = current_temperatures[x]
+            if current_temperatures[x] < min_temperature:
+                min_temperature = current_temperatures[x]
+
+        # Prepares data for plotting
+        data = []
+        for x in range(len(self.channels)):
+            data.append((self.runtime, self.temperature[x], "Channel " + str(self.channels[x])))
+
+        # Prepares x-axis limits based off runtime
+        x_lim = (relative_time - 60, relative_time)
+
+        # Prepares y-axis limits based on max and min of graph
+        y_lim = (min_temperature - 2, max_temperature + 2)
+
+        # Updates plot
+        self.plot.update_data(data, x_lim, y_lim)
 
         # Updates labels
         for i in range(len(self.channels)):
 
             # Changes labels values to most recent data
-            self.values[i].config(text=temperatures[i])
+            self.values[i].config(text=current_temperatures[i])
 
             # Checks if value displayed is too short, for example 24.4 would be converted to 24.40
-            if len(str(self.values[i].cget("text"))) < 5:
-                self.values[i].config(text=str(temperatures[i]) + "0")
+            if len(str(self.values[i].cget("text"))) < 3:
+                self.values[i].config(text=str(current_temperatures[i]) + ".0")
 
         # End of function command to repeat
         self.after(self.refresh_time, self.update_labels)
@@ -244,7 +293,7 @@ class Controller:
 
 class Plot(Frame):
 
-    def __init__(self, master, data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
+    def __init__(self, master, plot_title="", xlabel="", ylabel="", data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
         """
             Class for plotting data in tkinter.
 
@@ -279,9 +328,6 @@ class Plot(Frame):
                 data = [data1, data2]
 
                 plot = Plot(root, data)
-
-
-
             """
         super().__init__(master)
 
@@ -293,6 +339,13 @@ class Plot(Frame):
 
         # Initializes plot
         self.main_plot = self.figure.add_subplot(111)
+        # Saves title and axis labels and adds
+        self.title = plot_title
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.main_plot.set_title(plot_title)
+        self.main_plot.set_xlabel(xlabel)
+        self.main_plot.set_ylabel(ylabel)
 
         # Sets axis limits
         self.main_plot.set_xlim(x_lim[0], x_lim[1])
@@ -305,7 +358,7 @@ class Plot(Frame):
             self.main_plot.plot(data[0], data[1], label=data[2])
 
             # Initializes legend in lower right corner
-            self.legend = self.main_plot.legend(loc='lower right')
+            self.legend = self.main_plot.legend(loc='lower left')
 
         if type(data) is list:
 
@@ -314,7 +367,7 @@ class Plot(Frame):
                 self.main_plot.plot(i[0], i[1], label=i[2])
 
             # Initializes legend in lower right corner
-            self.legend = self.main_plot.legend(loc='lower right')
+            self.legend = self.main_plot.legend(loc='lower left')
 
 
         # Draws figure
@@ -323,11 +376,21 @@ class Plot(Frame):
         self.canvas.get_tk_widget().pack()
 
     def clear(self):
+        """
+        Clears plot data without removing title and axes
+        """
+        # Clears plot data
         self.main_plot.clear()
+
+        # Reinitialize title and axis labels
+        self.main_plot.set_title(self.title)
+        self.main_plot.set_xlabel(self.xlabel)
+        self.main_plot.set_ylabel(self.ylabel)
+
 
     def update_data(self, data, x_lim, y_lim):
 
-        # Clears previous data
+        # Clears previous plot data
         self.clear()
 
         # Sets axis limits
@@ -339,13 +402,15 @@ class Plot(Frame):
             # Plots single set of data
             self.main_plot.plot(data[0], data[1], label=data[2])
         if type(data) is list:
-
             # Plots multiple sets of data
             for i in data:
                 self.main_plot.plot(i[0], i[1], label=i[2])
 
         # Initializes legend in lower right corner
-        self.legend = self.main_plot.legend(loc='lower right')
+        self.legend = self.main_plot.legend(loc='lower left')
+
+        # Applies changes
+        self.canvas.draw()
 
 
 # Runs app and updates labels every 250ms
