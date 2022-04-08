@@ -2,9 +2,16 @@ from __future__ import absolute_import, division, print_function
 from builtins import *
 from mcculw import ul
 from mcculw.enums import ULRange, InfoType, BoardInfo, AiChanType, AnalogInputMode, TcType, TempScale, TInOptions
+
 import numpy as np
+
 from tkinter import *
 from tkinter import ttk
+
+# Imports for Plot class
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+from matplotlib import style
 
 
 class App(Tk):
@@ -230,6 +237,112 @@ class Controller:
                 print(temperature_array)
                 average_temperature_array.append(np.average(temperature_array))
             return average_temperature_array
+
+
+class Plot(Frame):
+
+    def __init__(self, master, data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
+        """
+            Class for plotting data in tkinter.
+
+            :param master: Frame to place plot
+            :param data: Data to plot as either a tuple or list. Refer to documentation for formatting
+            :param figure_size: Size of figure as a tuple
+
+            Data to be fed into this class should be formatted as follows:
+
+                x = [1, 2, 3, 4, 5]
+                y = [1, 2, 3, 4, 5]
+                label = "Data"
+
+                data = (x, y, label)
+
+                plot = Plot(root, data)
+
+            OR
+
+                x = [1, 2, 3, 4, 5]
+                y = [1, 2, 3, 4, 5]
+                label = "Data1"
+
+                data1 = (x, y, label)
+
+                z = [1, 2, 3, 4, 5]
+                w = [1, 2, 3, 4, 5]
+                label2 = "Data2"
+
+                data2 = (z, w, label2)
+
+                data = [data1, data2]
+
+                plot = Plot(root, data)
+
+
+
+            """
+        super().__init__(master)
+
+        # Style for plots to use
+        style.use('seaborn')
+
+        # Initializes figure
+        self.figure = Figure(figure_size, dpi=dpi)
+
+        # Initializes plot
+        self.main_plot = self.figure.add_subplot(111)
+
+        # Sets axis limits
+        self.main_plot.set_xlim(x_lim[0], x_lim[1])
+        self.main_plot.set_ylim(y_lim[0], y_lim[1])
+
+        # Plots data
+        if type(data) is tuple:
+
+            # Plots single set of data
+            self.main_plot.plot(data[0], data[1], label=data[2])
+
+            # Initializes legend in lower right corner
+            self.legend = self.main_plot.legend(loc='lower right')
+
+        if type(data) is list:
+
+            # Plots multiple sets of data
+            for i in data:
+                self.main_plot.plot(i[0], i[1], label=i[2])
+
+            # Initializes legend in lower right corner
+            self.legend = self.main_plot.legend(loc='lower right')
+
+
+        # Draws figure
+        self.canvas = FigureCanvasTkAgg(self.figure, master=master)  # A tk.DrawingArea.
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack()
+
+    def clear(self):
+        self.main_plot.clear()
+
+    def update_data(self, data, x_lim, y_lim):
+
+        # Clears previous data
+        self.clear()
+
+        # Sets axis limits
+        self.main_plot.set_xlim(x_lim[0], x_lim[1])
+        self.main_plot.set_ylim(y_lim[0], y_lim[1])
+
+        # Plots data
+        if type(data) is tuple:
+            # Plots single set of data
+            self.main_plot.plot(data[0], data[1], label=data[2])
+        if type(data) is list:
+
+            # Plots multiple sets of data
+            for i in data:
+                self.main_plot.plot(i[0], i[1], label=i[2])
+
+        # Initializes legend in lower right corner
+        self.legend = self.main_plot.legend(loc='lower right')
 
 
 # Runs app and updates labels every 250ms
