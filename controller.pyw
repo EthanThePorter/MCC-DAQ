@@ -32,7 +32,7 @@ class App(Tk):
         self.labels = []
         for i in range(len(self.channels)):
             self.labels.append(ttk.Label(self, text="Channel " + str(self.channels[i]) + ": ", background='white'))
-            self.labels[i].grid(row=i, column=0, pady=5)
+            self.labels[i].grid(row=i, column=0, pady=5, sticky=W)
 
         # Create labels to show values of channels
         self.values = []
@@ -62,7 +62,7 @@ class App(Tk):
                 self.values[i].config(text=str(temperatures[i]) + "0")
 
         # End of function command to repeat
-        self.after(1000, self.update_labels)
+        self.after(self.refresh_time, self.update_labels)
 
 
 class Controller:
@@ -232,7 +232,7 @@ class Controller:
             return average_temperature_array
 
 
-# Runs app and updates labels every 100ms
-app = App(100)
+# Runs app and updates labels every 250ms
+app = App(500)
 app.update_labels()
 app.mainloop()
