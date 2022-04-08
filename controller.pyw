@@ -48,30 +48,38 @@ class App(Tk):
         self.temperature = [[] for x in self.channels]
         self.runtime = []
 
+        # Initializes max/min values for graph
+        self.max_temperature = -1000
+        self.min_temperature = 1000
+
         # Create plot
         self.plot_frame = Frame(self)
-        self.plot_frame.grid(row=0, rowspan=len(self.channels), column=3, columnspan=3)
+        self.plot_frame.grid(row=0, column=1)
         self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)")
+
+        # New frame for labels
+        self.channel_data_frame = Frame(self, background='white')
+        self.channel_data_frame.grid(row=0, column=0)
 
         # Create labels to identity channels
         self.labels = []
         for i in range(len(self.channels)):
-            self.labels.append(ttk.Label(self, text="Channel " + str(self.channels[i]) + ": ", background='white'))
+            self.labels.append(ttk.Label(self.channel_data_frame, text="Channel " + str(self.channels[i]) + ": ", background='white'))
             self.labels[i].grid(row=i, column=0, pady=5, sticky=W)
 
         # Create labels to show values of channels
         self.values = []
         for i in range(len(self.channels)):
-            self.values.append(ttk.Label(self, text="", background='white'))
+            self.values.append(ttk.Label(self.channel_data_frame, text="", background='white'))
             self.values[i].grid(row=i, column=1, sticky=W, pady=5)
 
         # Adds unit symbol to the end
         self.units = []
         for i in range(len(self.channels)):
-            self.units.append(ttk.Label(self, text="°C", background='white'))
+            self.units.append(ttk.Label(self.channel_data_frame, text="°C", background='white'))
             self.units[i].grid(row=i, column=2, sticky=W, pady=5, padx=(0, 100))
 
-    def update_labels(self):
+    def update_all(self):
 
         # Gets temperatures and round them
         current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
@@ -80,9 +88,7 @@ class App(Tk):
         relative_time = np.round(time.time() - self.start_time, 1)
         self.runtime.append(relative_time)
 
-        # Initializes max_temperature and min_temperature for y-axis limits with arbitrary value
-        max_temperature = current_temperatures[0]
-        min_temperature = current_temperatures[0]
+
 
         # Appends temperature data to main array and checks for new max and min
         for x in range(len(self.channels)):
@@ -91,10 +97,10 @@ class App(Tk):
             self.temperature[x].append(current_temperatures[x])
 
             # Updates max and min temperature
-            if current_temperatures[x] > max_temperature:
-                max_temperature = current_temperatures[x]
-            if current_temperatures[x] < min_temperature:
-                min_temperature = current_temperatures[x]
+            if current_temperatures[x] > self.max_temperature:
+                self.max_temperature = current_temperatures[x]
+            if current_temperatures[x] < self.min_temperature:
+                self.min_temperature = current_temperatures[x]
 
         # Prepares data for plotting
         data = []
@@ -105,7 +111,7 @@ class App(Tk):
         x_lim = (relative_time - 60, relative_time)
 
         # Prepares y-axis limits based on max and min of graph
-        y_lim = (min_temperature - 2, max_temperature + 2)
+        y_lim = (self.min_temperature - 2, self.max_temperature + 2)
 
         # Updates plot
         self.plot.update_data(data, x_lim, y_lim)
@@ -121,7 +127,7 @@ class App(Tk):
                 self.values[i].config(text=str(current_temperatures[i]) + ".0")
 
         # End of function command to repeat
-        self.after(self.refresh_time, self.update_labels)
+        self.after(self.refresh_time, self.update_all)
 
 
 class Controller:
@@ -293,7 +299,7 @@ class Controller:
 
 class Plot(Frame):
 
-    def __init__(self, master, plot_title="", xlabel="", ylabel="", data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
+    def __init__(self, master, plot_title="", x_label="", y_label="", data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
         """
             Class for plotting data in tkinter.
 
@@ -341,11 +347,11 @@ class Plot(Frame):
         self.main_plot = self.figure.add_subplot(111)
         # Saves title and axis labels and adds
         self.title = plot_title
-        self.xlabel = xlabel
-        self.ylabel = ylabel
+        self.x_label = x_label
+        self.y_label = y_label
         self.main_plot.set_title(plot_title)
-        self.main_plot.set_xlabel(xlabel)
-        self.main_plot.set_ylabel(ylabel)
+        self.main_plot.set_xlabel(x_label)
+        self.main_plot.set_ylabel(y_label)
 
         # Sets axis limits
         self.main_plot.set_xlim(x_lim[0], x_lim[1])
@@ -384,9 +390,8 @@ class Plot(Frame):
 
         # Reinitialize title and axis labels
         self.main_plot.set_title(self.title)
-        self.main_plot.set_xlabel(self.xlabel)
-        self.main_plot.set_ylabel(self.ylabel)
-
+        self.main_plot.set_xlabel(self.x_label)
+        self.main_plot.set_ylabel(self.y_label)
 
     def update_data(self, data, x_lim, y_lim):
 
@@ -413,7 +418,7 @@ class Plot(Frame):
         self.canvas.draw()
 
 
-# Runs app and updates labels every 250ms
-app = App(500)
-app.update_labels()
+# Runs app and updates every 25ms
+app = App(25)
+app.update_all()
 app.mainloop()
