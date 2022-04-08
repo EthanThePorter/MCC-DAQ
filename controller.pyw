@@ -32,11 +32,11 @@ class App(Tk):
         self.config(background='white')
         self.iconbitmap('assets/uwicon.ico')
 
-        # Configure channels to read thermocouples
-        Controller.initialize_thermocouple_read()
-
         # Channels to create labels for
         self.channels = [0, 1, 8, 12, 13]
+
+        # Configure channels to read thermocouples
+        Controller.initialize_thermocouple_read(self.channels)
 
         # Create labels to identity channels
         self.labels = []
