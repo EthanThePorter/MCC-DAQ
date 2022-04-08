@@ -54,32 +54,14 @@ class App(Tk):
 
         # Create plot
         self.plot_frame = Frame(self)
-        self.plot_frame.grid(row=0, column=1)
-        self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)")
+        self.plot_frame.grid(row=0, column=0)
+        self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)", figure_size=(4, 6))
 
-        # New frame for labels
-        self.channel_data_frame = Frame(self, background='white')
-        self.channel_data_frame.grid(row=0, column=0)
-
-        # Create labels to identity channels
-        self.labels = []
-        for i in range(len(self.channels)):
-            self.labels.append(ttk.Label(self.channel_data_frame, text="Channel " + str(self.channels[i]) + ": ", background='white'))
-            self.labels[i].grid(row=i, column=0, pady=5, sticky=W)
-
-        # Create labels to show values of channels
-        self.values = []
-        for i in range(len(self.channels)):
-            self.values.append(ttk.Label(self.channel_data_frame, text="", background='white'))
-            self.values[i].grid(row=i, column=1, sticky=W, pady=5)
-
-        # Adds unit symbol to the end
-        self.units = []
-        for i in range(len(self.channels)):
-            self.units.append(ttk.Label(self.channel_data_frame, text="°C", background='white'))
-            self.units[i].grid(row=i, column=2, sticky=W, pady=5, padx=(0, 100))
 
     def update_all(self):
+
+        # Gets start time of function for metrics
+        update_runtime_start = time.time()
 
         # Gets temperatures and round them
         current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
@@ -87,8 +69,6 @@ class App(Tk):
         #Gets time and rounds - adds to runtime array
         relative_time = np.round(time.time() - self.start_time, 1)
         self.runtime.append(relative_time)
-
-
 
         # Appends temperature data to main array and checks for new max and min
         for x in range(len(self.channels)):
@@ -105,29 +85,27 @@ class App(Tk):
         # Prepares data for plotting
         data = []
         for x in range(len(self.channels)):
-            data.append((self.runtime, self.temperature[x], "Channel " + str(self.channels[x])))
+            data.append((self.runtime, self.temperature[x], "Channel " + str(self.channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
 
         # Prepares x-axis limits based off runtime
         x_lim = (relative_time - 60, relative_time)
 
         # Prepares y-axis limits based on max and min of graph
-        y_lim = (self.min_temperature - 2, self.max_temperature + 2)
+        y_lim = (self.min_temperature - 3, self.max_temperature + 3)
 
         # Updates plot
         self.plot.update_data(data, x_lim, y_lim)
 
-        # Updates labels
-        for i in range(len(self.channels)):
+        # Gets time taken to run function and outputs to terminal
+        update_runtime_finish = (time.time() - update_runtime_start) * 1000
+        #print(str(update_runtime_finish) + "ms")
 
-            # Changes labels values to most recent data
-            self.values[i].config(text=current_temperatures[i])
+        # Subtracts time took to run overall method for consistent data points
+        adjusted_time = int(abs(self.refresh_time - update_runtime_finish))
 
-            # Checks if value displayed is too short, for example 24.4 would be converted to 24.40
-            if len(str(self.values[i].cget("text"))) < 3:
-                self.values[i].config(text=str(current_temperatures[i]) + ".0")
 
-        # End of function command to repeat
-        self.after(self.refresh_time, self.update_all)
+        # End of function command to repeat,
+        self.after(adjusted_time, self.update_all)
 
 
 class Controller:
@@ -418,7 +396,7 @@ class Plot(Frame):
         self.canvas.draw()
 
 
-# Runs app and updates every 25ms
-app = App(25)
+# Runs app and updates every 500ms
+app = App(500)
 app.update_all()
 app.mainloop()
