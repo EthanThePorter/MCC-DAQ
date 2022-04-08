@@ -232,7 +232,7 @@ class Controller:
             return average_temperature_array
 
 
-# Runs app and updates labels every 500ms
-app = App(500)
+# Runs app and updates labels every 100ms
+app = App(100)
 app.update_labels()
 app.mainloop()
