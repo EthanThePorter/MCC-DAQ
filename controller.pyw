@@ -6,7 +6,6 @@ from mcculw.enums import ULRange, InfoType, BoardInfo, AiChanType, AnalogInputMo
 import numpy as np
 
 from tkinter import *
-from tkinter import ttk
 
 # Imports for Plot class
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -26,9 +25,6 @@ class App(Tk):
         """
         Tk.__init__(self, *args, **kwargs)
 
-        # Initializes start time
-        self.start_time = time.time()
-
         # Initializes time to update labels
         self.refresh_time = refresh_time
 
@@ -44,43 +40,45 @@ class App(Tk):
         # Configure channels to read thermocouples
         Controller.initialize_thermocouple_read(self.channels)
 
-        # Initializes lists for temperature and time to be saved to
+        # Initializes empty lists for temperature and time to be saved to
         self.temperature = [[] for x in self.channels]
         self.runtime = []
 
-        # Initializes max/min values for graph
-        self.max_temperature = -1000
-        self.min_temperature = 1000
-
         # Create plot
         self.plot_frame = Frame(self)
-        self.plot_frame.grid(row=0, column=0)
+        self.plot_frame.pack()
         self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)", figure_size=(4, 6))
+
+        # Initializes start time after everything is set up
+        self.start_time = time.time()
+        self.start_time_adjusted = False
 
 
     def update_all(self):
-
-        # Gets start time of function for metrics
+        """
+        Updates app by performing functions and re-running at a consistent refresh rate as set by app
+        """
+        # Gets start time of update_all() function for making data readout consistent
         update_runtime_start = time.time()
 
-        # Gets temperatures and round them
-        current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
+        # Adjust data start time to ensure data starts at 0.0s
+        if not self.start_time_adjusted:
+            self.start_time += time.time() - self.start_time
+            self.start_time_adjusted = True
 
-        #Gets time and rounds - adds to runtime array
+        #Gets time and rounds - adds to runtime array - data will be collected at self.refresh_rate
         relative_time = np.round(time.time() - self.start_time, 1)
         self.runtime.append(relative_time)
+
+
+        # Gets temperatures and rounds
+        current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
 
         # Appends temperature data to main array and checks for new max and min
         for x in range(len(self.channels)):
 
             # Appends current temperatures to a 2D list
             self.temperature[x].append(current_temperatures[x])
-
-            # Updates max and min temperature
-            if current_temperatures[x] > self.max_temperature:
-                self.max_temperature = current_temperatures[x]
-            if current_temperatures[x] < self.min_temperature:
-                self.min_temperature = current_temperatures[x]
 
         # Formats data for plotting - refer to Plot class for more information.
         data = []
@@ -90,9 +88,9 @@ class App(Tk):
         # Updates plot
         self.plot.update_data(data)
 
+
         # Gets time taken to run function and outputs to terminal
         update_runtime_finish = (time.time() - update_runtime_start) * 1000
-        #print(str(update_runtime_finish) + "ms")
 
         # Subtracts time took to run overall method for consistent data points
         adjusted_time = int(abs(self.refresh_time - update_runtime_finish))
@@ -463,7 +461,7 @@ class Plot(Frame):
         """
         Function to get max and min from data
 
-        :param data: Either tuple or list of tuples in correct format
+        :param data: Either tuple or list of tuples in correct format - refer to Plot __init__ documentation.
         :return: Max and min for both x and y in data in the tuple format: (x_maximum, x_minimum, y_maximum, y_minimum)
         """
 
