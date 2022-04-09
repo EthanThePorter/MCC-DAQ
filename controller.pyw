@@ -41,7 +41,7 @@ class App(Tk):
         Controller.initialize_thermocouple_read(self.channels)
 
         # Initializes empty lists for temperature and time to be saved to
-        self.temperature = [[] for x in self.channels]
+        self.temperature = [[] for _ in self.channels]
         self.runtime = []
 
         # Create plot
@@ -252,14 +252,14 @@ class Controller:
         if type(channel) is int:
 
             # Creates 1D array of temperature vales with length equal to number_of_runs_to_average, then returns average
-            temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for x in
+            temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for _ in
                                  range(number_of_runs_to_average)]
             return np.average(temperature_array)
 
         if type(channel) is list:
             average_temperature_array = []
-            for i in channel:
-                temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for x in
+            for _ in channel:
+                temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for _ in
                                      range(number_of_runs_to_average)]
                 print(temperature_array)
                 average_temperature_array.append(np.average(temperature_array))
@@ -268,7 +268,7 @@ class Controller:
 
 class Plot(Frame):
 
-    def __init__(self, master: Frame | Tk, plot_title="", x_label="", y_label="", data=0, auto_fit=True, follow=120, buffer=3, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
+    def __init__(self, master: Frame | Tk, plot_title="", x_label="", y_label="", data: tuple | list | int = 0, auto_fit=True, follow=120, buffer=3, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
         """
             Class for plotting data in tkinter.
 
@@ -494,7 +494,7 @@ class Plot(Frame):
             return x_maximum, x_minimum, y_maximum, y_minimum
 
 
-# Runs app and updates every 500ms
+# Runs app and updates every 500ms. 500ms is the minimum recommended refresh time as it takes about 300-400ms to perform calculations.
 app = App(500)
 app.update_all()
 app.mainloop()
