@@ -82,19 +82,13 @@ class App(Tk):
             if current_temperatures[x] < self.min_temperature:
                 self.min_temperature = current_temperatures[x]
 
-        # Prepares data for plotting
+        # Formats data for plotting - refer to Plot class for more information.
         data = []
         for x in range(len(self.channels)):
             data.append((self.runtime, self.temperature[x], "Channel " + str(self.channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
 
-        # Prepares x-axis limits based off runtime
-        x_lim = (relative_time - 60, relative_time)
-
-        # Prepares y-axis limits based on max and min of graph
-        y_lim = (self.min_temperature - 3, self.max_temperature + 3)
-
         # Updates plot
-        self.plot.update_data(data, x_lim, y_lim)
+        self.plot.update_data(data)
 
         # Gets time taken to run function and outputs to terminal
         update_runtime_finish = (time.time() - update_runtime_start) * 1000
@@ -102,7 +96,6 @@ class App(Tk):
 
         # Subtracts time took to run overall method for consistent data points
         adjusted_time = int(abs(self.refresh_time - update_runtime_finish))
-
 
         # End of function command to repeat,
         self.after(adjusted_time, self.update_all)
@@ -205,7 +198,7 @@ class Controller:
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.TEMPSCALE,
                 TempScale.CELSIUS)
-            # Set data rate to 60Hz
+            # Set data rate
             ul.set_config(
                 InfoType.BOARDINFO, board_num, channel, BoardInfo.ADDATARATE, rate)
 
@@ -224,7 +217,7 @@ class Controller:
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.TEMPSCALE,
                     TempScale.CELSIUS)
-                # Set data rate to 60Hz
+                # Set data rate
                 ul.set_config(
                     InfoType.BOARDINFO, board_num, i, BoardInfo.ADDATARATE, rate)
 
@@ -277,13 +270,9 @@ class Controller:
 
 class Plot(Frame):
 
-    def __init__(self, master, plot_title="", x_label="", y_label="", data=0, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
+    def __init__(self, master: Frame | Tk, plot_title="", x_label="", y_label="", data=0, auto_fit=True, follow=120, buffer=3, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
         """
             Class for plotting data in tkinter.
-
-            :param master: Frame to place plot
-            :param data: Data to plot as either a tuple or list. Refer to documentation for formatting
-            :param figure_size: Size of figure as a tuple
 
             Data to be fed into this class should be formatted as follows:
 
@@ -312,17 +301,48 @@ class Plot(Frame):
                 data = [data1, data2]
 
                 plot = Plot(root, data)
+
+            Data can also be added after initialization as follows:
+
+                plot = Plot(Frame)
+                plot.update_data(data)
+
+            It is recommended to make a separate frame for the Plot class as follows:
+
+                plot_frame = Frame(master)
+                plot_frame.pack()
+                plot = Plot(plot_frame)
+
+
+            :param master: Frame or Tk to place plot on
+            :param data: Data to plot as either a tuple or list. Refer to documentation for formatting. Can be initialized after Plot using Plot.update_data(data)
+            :param plot_title: Title to be shown on plot - Optional
+            :param x_label: abel for x-axis - Optional
+            :param y_label: Label for y-axis - Optional
+            :param auto_fit: True by default. Will automatically scale plot to fit data. - Optional
+            :param follow: Amount to follow x-axis right limit by. Set to 0 to turn off. - Optional
+            :param buffer: Padding on y-axis from max and min values. - Optional
+            :param x_lim: X-axis limits. A tuple with the format: (min, max) - Optional
+            :param y_lim: Y-axis limits. A tuple with the format: (min, max) - Optional
+            :param figure_size: Size of plot. A tuple with the format: (horizontal_length, vertical_length) - Optional
+            :param dpi: Resolution of the plot. - Optional
             """
         super().__init__(master)
 
         # Style for plots to use
         style.use('seaborn')
 
+        # Initializes parameters for use throughout class
+        self.auto_fit = auto_fit
+        self.follow = follow
+        self.buffer = buffer
+
         # Initializes figure
         self.figure = Figure(figure_size, dpi=dpi)
 
         # Initializes plot
         self.main_plot = self.figure.add_subplot(111)
+
         # Saves title and axis labels and adds
         self.title = plot_title
         self.x_label = x_label
@@ -331,9 +351,30 @@ class Plot(Frame):
         self.main_plot.set_xlabel(x_label)
         self.main_plot.set_ylabel(y_label)
 
-        # Sets axis limits
-        self.main_plot.set_xlim(x_lim[0], x_lim[1])
-        self.main_plot.set_ylim(y_lim[0], y_lim[1])
+        # If auto_size is true and data is not empty
+        if auto_fit and data != 0:
+
+            # Gets axis limits for data
+            limits = self.get_data_limits(data)
+
+            if self.follow == 0:
+
+                # Sets axis limits
+                self.main_plot.set_xlim(limits[1], limits[0])
+                self.main_plot.set_ylim(limits[3] - self.buffer, limits[2] + self.buffer)
+
+            else:
+
+                # Sets axis limits
+                self.main_plot.set_xlim(limits[0] - self.follow, limits[0])
+                self.main_plot.set_ylim(limits[3] - self.buffer, limits[2] + self.buffer)
+
+
+        else:
+
+            # Sets axis limits
+            self.main_plot.set_xlim(x_lim[0], x_lim[1])
+            self.main_plot.set_ylim(y_lim[0], y_lim[1])
 
         # Plots data
         if type(data) is tuple:
@@ -371,14 +412,36 @@ class Plot(Frame):
         self.main_plot.set_xlabel(self.x_label)
         self.main_plot.set_ylabel(self.y_label)
 
-    def update_data(self, data, x_lim, y_lim):
+    def update_data(self, data, x_lim=(0, 1), y_lim=(0, 1)):
 
         # Clears previous plot data
         self.clear()
 
-        # Sets axis limits
-        self.main_plot.set_xlim(x_lim[0], x_lim[1])
-        self.main_plot.set_ylim(y_lim[0], y_lim[1])
+        # If auto_fit is true
+        if self.auto_fit:
+
+            # Gets axis limits for data
+            limits = self.get_data_limits(data)
+
+            # Is follow is off
+            if self.follow == 0:
+
+                # Sets axis limits
+                self.main_plot.set_xlim(limits[1], limits[0])
+                self.main_plot.set_ylim(limits[3] - self.buffer, limits[2] + self.buffer)
+
+            else:
+
+                # Sets axis limits
+                self.main_plot.set_xlim(limits[0] - self.follow, limits[0])
+                self.main_plot.set_ylim(limits[3] - self.buffer, limits[2] + self.buffer)
+
+        # If auto_fit is not true use method parameters
+        else:
+
+            # Sets axis limits
+            self.main_plot.set_xlim(x_lim[0], x_lim[1])
+            self.main_plot.set_ylim(y_lim[0], y_lim[1])
 
         # Plots data
         if type(data) is tuple:
@@ -394,6 +457,43 @@ class Plot(Frame):
 
         # Applies changes
         self.canvas.draw()
+
+    @staticmethod
+    def get_data_limits(data):
+        """
+        Function to get max and min from data
+
+        :param data: Either tuple or list of tuples in correct format
+        :return: Max and min for both x and y in data in the tuple format: (x_maximum, x_minimum, y_maximum, y_minimum)
+        """
+
+        # If data is a single set
+        if type(data) == tuple:
+            return np.max(data[0]), np.min(data[0]), np.max(data[1]), np.min(data[1])
+
+        # If data is multiple sets
+        if type(data) == list:
+
+            # Initialize max and min values
+            x_maximum = -10**10
+            x_minimum = 10**10
+            y_maximum = -10 ** 10
+            y_minimum = 10 ** 10
+
+            # Checks for max and min in each set and updates overall max and min
+            for x in data:
+
+                if np.max(x[0]) > x_maximum:
+                    x_maximum = np.max(x[0])
+                if np.min(x[0]) < x_minimum:
+                    x_minimum = np.min(x[0])
+
+                if np.max(x[1]) > y_minimum:
+                    y_maximum = np.max(x[1])
+                if np.min(x[1]) < y_minimum:
+                    y_minimum = np.min(x[1])
+
+            return x_maximum, x_minimum, y_maximum, y_minimum
 
 
 # Runs app and updates every 500ms
