@@ -25,8 +25,17 @@ class App(Tk):
         """
         Tk.__init__(self, *args, **kwargs)
 
-        # Initializes time to update labels
+        # Initializes time to update main thread
         self.refresh_time = refresh_time
+
+        # Initializes start time
+        self.start_time = time.time()
+        self.start_time_adjusted = False
+
+        # Initializes variable to account for time lost to rounding
+        self.rounding_time_loss = 0
+
+
 
         # Window settings
         self.title('MCC DAQ')
@@ -49,19 +58,15 @@ class App(Tk):
         self.plot_frame.pack()
         self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)", figure_size=(4, 6))
 
-        # Initializes start time after everything is set up
-        self.start_time = time.time()
-        self.start_time_adjusted = False
 
-
-    def update_all(self):
+    def main_thread(self):
         """
-        Updates app by performing functions and re-running at a consistent refresh rate as set by app
+        Function that regulates app to ensure consistent refresh time
         """
-        # Gets start time of update_all() function for making data readout consistent
+        # Gets start time of main_thread() for making data readout consistent
         update_runtime_start = time.time()
 
-        # Adjust data start time to ensure data starts at 0.0s
+        # Adjust data start time to ensure data starts at 0.0s. Only runs first time main_thread() is run
         if not self.start_time_adjusted:
             self.start_time += time.time() - self.start_time
             self.start_time_adjusted = True
@@ -70,33 +75,69 @@ class App(Tk):
         relative_time = np.round(time.time() - self.start_time, 1)
         self.runtime.append(relative_time)
 
+        # Initializes value for time drift correction
+        offset_time = (time.time() - self.start_time) * 1000
+        offset_time_int = round(offset_time, -2)
+        delta_time = int(offset_time - offset_time_int)
 
-        # Gets temperatures and rounds
-        current_temperatures = np.round(Controller.thermocouple_instantaneous_read(self.channels), 1)
+        print(time.time() - self.start_time)
 
-        # Appends temperature data to main array and checks for new max and min
+
+        # Starts timer to monitor main_update() runtime
+        runtime = time.time()
+
+        # Main update function where runtime code goes
+        self.main_update()
+
+        # Ends timer to monitor main_update() runtime and converts to (ms)
+        runtime = int((time.time() - runtime) * 1000)
+
+        # If runtime of main_update() excess refresh time, output error to terminal
+        if runtime > self.refresh_time:
+            print("\n\033[0;31mWARNING: Runtime of main thread exceeded refresh rate.\nRefresh rate: "
+                  + str(self.refresh_time) + " ms \nRuntime: " + str(round(runtime, 1)) + " ms\n\033[0;37m")
+
+
+        # Gets time taken to run function and outputs to console
+        update_runtime_finish = (time.time() - update_runtime_start) * 1000
+        # print(update_runtime_finish)
+
+        # Gets time in ms to reduce time till refresh, adjusting for time took to run code
+        adjusted_time = self.refresh_time - update_runtime_finish
+        adjusted_time_floored = int(round(adjusted_time, 0))
+
+        # Applies adjusted time
+        if delta_time > 1:
+            adjusted_time_floored -= delta_time
+
+        # End of function command to repeat,
+        self.after(adjusted_time_floored, self.main_thread)
+
+
+    def main_update(self):
+        """
+        Main runtime method that contains all code to execute during app runtime.
+        """
+        # Gets temperatures
+        current_temperatures_not_rounded = Controller.thermocouple_instantaneous_read(self.channels)
+
+        # Rounds temperatures
+        current_temperatures = np.round(current_temperatures_not_rounded, 1)
+
+        # Appends temperature data to main array
         for x in range(len(self.channels)):
-
             # Appends current temperatures to a 2D list
             self.temperature[x].append(current_temperatures[x])
 
-        # Formats data for plotting - refer to Plot class for more information.
+        # Formats data for plotting - format is a tuple as follows: (x, y, label)
         data = []
         for x in range(len(self.channels)):
-            data.append((self.runtime, self.temperature[x], "Channel " + str(self.channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
+            data.append((self.runtime,
+                         self.temperature[x],
+                         "Channel " + str(self.channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
 
         # Updates plot
         self.plot.update_data(data)
-
-
-        # Gets time taken to run function and outputs to terminal
-        update_runtime_finish = (time.time() - update_runtime_start) * 1000
-
-        # Subtracts time took to run overall method for consistent data points
-        adjusted_time = int(abs(self.refresh_time - update_runtime_finish))
-
-        # End of function command to repeat,
-        self.after(adjusted_time, self.update_all)
 
 
 class Controller:
@@ -261,7 +302,6 @@ class Controller:
             for _ in channel:
                 temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for _ in
                                      range(number_of_runs_to_average)]
-                print(temperature_array)
                 average_temperature_array.append(np.average(temperature_array))
             return average_temperature_array
 
@@ -494,7 +534,9 @@ class Plot(Frame):
             return x_maximum, x_minimum, y_maximum, y_minimum
 
 
-# Runs app and updates every 500ms. 500ms is the minimum recommended refresh time as it takes about 300-400ms to perform calculations.
+# Runs app and updates every 500ms.
+# 500ms is the minimum recommended refresh time as it takes about 300-400ms to perform calculations.
+# App will output error if calculation time exceeds refresh rate.
 app = App(500)
-app.update_all()
+app.main_thread()
 app.mainloop()
