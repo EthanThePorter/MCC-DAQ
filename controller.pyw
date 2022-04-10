@@ -1,18 +1,29 @@
+# Used by Controller
 from __future__ import absolute_import, division, print_function
 from builtins import *
 from mcculw import ul
 from mcculw.enums import ULRange, InfoType, BoardInfo, AiChanType, AnalogInputMode, TcType, TempScale, TInOptions
 
+# Used by all classes
 import numpy as np
 
+# Used by Plot & App
 from tkinter import *
 
-# Imports for Plot class
+# Used by Plot
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib import style
 
+# Used by App
 import time
+
+# Used by DataHandler
+import pandas as pd
+import sys
+import os
+import xlsxwriter
+import subprocess
 
 
 class App(Tk):
@@ -75,6 +86,8 @@ class App(Tk):
         relative_time = np.round(time.time() - self.start_time, 1)
         self.runtime.append(relative_time)
 
+        print(time.time() - self.start_time)
+
         # Initializes value for time drift correction
         offset_time = (time.time() - self.start_time) * 1000
         offset_time_int = round(offset_time, -2)
@@ -136,6 +149,16 @@ class App(Tk):
 
         # Updates plot
         self.plot.update_data(data)
+
+
+        # Initializes DataFrame
+        df = pd.DataFrame()
+        df['Runtime (s)'] = self.runtime
+        for x in range(len(self.channels)):
+            df['Channel ' + str(self.channels[x]) + ' (°C)'] = self.temperature[x]
+
+        # Outputs DataFrame to Excel file
+        DataHandler.export(df, "C:/Users/labuser/Desktop/MCC-DAQ", "MCC-DAQ Data")
 
 
 class Controller:
@@ -532,9 +555,60 @@ class Plot(Frame):
             return x_maximum, x_minimum, y_maximum, y_minimum
 
 
-# Runs app and updates every 500ms.
-# 500ms is the minimum recommended refresh time as it takes about 300-400ms to perform calculations.
+class DataHandler:
+
+    @staticmethod
+    def export(data: pd.DataFrame(), output_directory_path: str, filename: str, sheet_name="Sheet1"):
+        """
+        Method to export pandas dataframe to Excel file.
+        :param data: Data as a pandas DataFrame
+        :param output_directory_path: Path to export file to
+        :param filename: Name of file
+        :param sheet_name: Name of sheet
+        """
+
+        # Formats path if necessary
+        if output_directory_path[-1] != '/':
+            output_directory_path += '/'
+
+        # Checks if directory exists or not then makes it
+        if not os.path.exists(output_directory_path):
+            os.makedirs(output_directory_path)
+
+        # Try to write data to given filename
+        try:
+
+            # Get path
+            path = output_directory_path + filename + ".xlsx"
+
+            # Initializes writer
+            writer = pd.ExcelWriter(path, engine='xlsxwriter')
+
+        # If any error occurs, write file labelled "temp xlsx" instead to project directory
+        except:
+
+            # Get path
+            path = "./MCC-DAQ backup/" + "temp.xlsx"
+
+            # Initializes writer
+            writer = pd.ExcelWriter(path, engine='xlsxwriter')
+
+        # Writes data
+        data.to_excel(writer, index=False)
+
+        # Auto-fits data to columns
+        for column in data:
+            column_length = max(data[column].astype(str).map(len).max(), len(column))
+            col_idx = data.columns.get_loc(column)
+            writer.sheets[sheet_name].set_column(col_idx, col_idx, column_length)
+
+        # Saves data
+        writer.close()
+
+
+# Runs app and updates every 1000ms.
+# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
 # App will output error to terminal if calculation time exceeds refresh rate.
-app = App(500)
+app = App(1000)
 app.main_thread()
 app.mainloop()
