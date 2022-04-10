@@ -80,8 +80,6 @@ class App(Tk):
         offset_time_int = round(offset_time, -2)
         delta_time = int(offset_time - offset_time_int)
 
-        print(time.time() - self.start_time)
-
 
         # Starts timer to monitor main_update() runtime
         runtime = time.time()
@@ -102,11 +100,11 @@ class App(Tk):
         update_runtime_finish = (time.time() - update_runtime_start) * 1000
         # print(update_runtime_finish)
 
-        # Gets time in ms to reduce time till refresh, adjusting for time took to run code
+        # Gets time in ms to reduce time till refresh, accounting for time took to run code
         adjusted_time = self.refresh_time - update_runtime_finish
         adjusted_time_floored = int(round(adjusted_time, 0))
 
-        # Applies adjusted time
+        # Applies time offset
         if delta_time > 1:
             adjusted_time_floored -= delta_time
 
