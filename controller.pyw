@@ -534,7 +534,7 @@ class Plot(Frame):
 
 # Runs app and updates every 500ms.
 # 500ms is the minimum recommended refresh time as it takes about 300-400ms to perform calculations.
-# App will output error if calculation time exceeds refresh rate.
+# App will output error to terminal if calculation time exceeds refresh rate.
 app = App(500)
 app.main_thread()
 app.mainloop()
