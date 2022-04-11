@@ -9,6 +9,8 @@ import numpy as np
 
 # Used by Plot & App
 from tkinter import *
+from tkinter import ttk
+from tkinter import messagebox
 
 # Used by Plot
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -47,12 +49,28 @@ class App(Tk):
         self.rounding_time_loss = 0
 
 
-
         # Window settings
-        self.title('MCC DAQ')
+        self.title('MCC-DAQ')
         self.config(padx=10, pady=10)
         self.config(background='white')
         self.iconbitmap('assets/uwicon.ico')
+
+
+        # Create menu bar
+        menubar = Menu(self)
+
+        filemenu = Menu(menubar, tearoff=0)
+        filemenu.add_command(label="Data Path", command=self.open_data_window)
+        menubar.add_cascade(label="File", menu=filemenu)
+
+        datamenu = Menu(menubar, tearoff=0)
+        datamenu.add_command(label="Start Data Recording", command=self.start_recording)
+        datamenu.add_command(label="Stop Data Recording", command=self.end_recording)
+        menubar.add_cascade(label="Record Data", menu=datamenu)
+
+        # Add to main frame
+        self.config(menu=menubar)
+
 
         # Channels to create labels for
         self.channels = [0, 1, 8, 12, 13]
@@ -68,6 +86,104 @@ class App(Tk):
         self.plot_frame = Frame(self)
         self.plot_frame.pack()
         self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)", figure_size=(4, 6))
+
+
+        # Create recording label on bottom
+        self.recording_label = Label(self, text="", background='white')
+        self.recording_label.pack(side=LEFT, pady=5)
+
+        # Initialize variables for recording
+        self.recording_in_progress = False
+        self.recording_time_start = 0
+
+
+        # Initialize path and filename for data saving
+        self.data_path = "C:/Users/labuser/Desktop/MCC-DAQ"
+        self.filename = "MCC-DAQ Data"
+
+
+    def open_data_window(self):
+
+        # Create a Toplevel window
+        data_window = Toplevel(self, background='white')
+        data_window.iconbitmap('assets/uwicon.ico')
+        data_window.resizable(False, False)
+
+        # Label for data processing
+        Info_label = Label(data_window, text='Ensure Path & Filename does\nnot contain special characters', background='white')
+        Info_label.pack(pady=(10, 20))
+
+        # Label for data path
+        Path_label = Label(data_window, text='Data Directory Path', background='white')
+        Path_label.pack(padx=10, pady=(10, 2))
+
+        # Entry for data path
+        data_path_entry = Entry(data_window, width=40)
+        data_path_entry.insert(END, self.data_path)
+        data_path_entry.pack(padx=10, pady=(0, 10))
+
+        # Label for filename
+        filename_label = Label(data_window, text='Filename', background='white')
+        filename_label.pack(padx=10, pady=(10, 2))
+
+        # Entry for filename
+        filename_entry = Entry(data_window, width=40)
+        filename_entry.insert(END, self.filename)
+        filename_entry.pack(padx=10, pady=(0, 10))
+
+        # Button for applying changes
+        apply_button = Button(data_window, text='Apply', command=lambda: self.close_data_window(data_window,
+                                                                                                data_path_entry.get(),
+                                                                                                filename_entry.get()))
+        apply_button.config(width=20)
+        apply_button.pack(padx=10, pady=10)
+
+
+    def close_data_window(self, window, path, filename):
+
+        # Cleans path and filename
+        cleaned_path = path.strip()
+        cleaned_filename = filename.strip()
+
+        # Updates filename and path
+        self.data_path = cleaned_path
+        self.filename = cleaned_filename
+
+        # Closes popup
+        window.destroy()
+
+
+    def start_recording(self):
+        """
+        Method to initiate App data recording.
+        """
+
+        # If recording isn't already in progress
+        if not self.recording_in_progress:
+
+            # Mark that recording is in progress
+            self.recording_in_progress = True
+
+            # Get recording time start
+            self.recording_time_start = self.runtime[-1]
+
+            # Updates recording label
+            self.recording_label.config(text="Recording Started at: " + str(int(self.recording_time_start)) + "s")
+
+
+    def end_recording(self):
+        """
+        Method to stop App data recording
+        """
+
+        #Checks if recording is in progress
+        if self.recording_in_progress:
+
+            # Set recording to false
+            self.recording_in_progress = False
+
+        # Configure label
+        self.recording_label.config(text='Recording Stopped at: ' + str(int(self.runtime[-1])) + "s")
 
 
     def main_thread(self):
@@ -106,7 +222,7 @@ class App(Tk):
         # If runtime of main_update() excess refresh time, output error to terminal
         if runtime > self.refresh_time:
             print("\n\033[0;31mWARNING: Runtime of main thread exceeded refresh rate.\nRefresh rate: "
-                  + str(self.refresh_time) + " ms \nRuntime: " + str(round(runtime, 1)) + " ms\n\033[0;37m")
+                  + str(self.refresh_time) + " ms \nRuntime: " + str(round(runtime, 1)) + " ms\n\033[0;30m")
 
 
         # Gets time taken to run function and outputs to console
@@ -151,14 +267,22 @@ class App(Tk):
         self.plot.update_data(data)
 
 
-        # Initializes DataFrame
-        df = pd.DataFrame()
-        df['Runtime (s)'] = self.runtime
-        for x in range(len(self.channels)):
-            df['Channel ' + str(self.channels[x]) + ' (°C)'] = self.temperature[x]
+        # If data recording is enabled
+        if self.recording_in_progress:
 
-        # Outputs DataFrame to Excel file
-        DataHandler.export(df, "C:/Users/labuser/Desktop/MCC-DAQ", "MCC-DAQ Data")
+            # Gets runtime
+            data_offset = int(self.recording_time_start)
+
+            # Initializes DataFrame
+            df = pd.DataFrame()
+
+            # Writes data to df DataFrame
+            df['Runtime (s)'] = [x - data_offset for x in self.runtime[data_offset:]]
+            for x in range(len(self.channels)):
+                df['Channel ' + str(self.channels[x]) + ' (°C)'] = self.temperature[x][data_offset:]
+
+            # Outputs DataFrame to Excel file
+            DataHandler.export(df, self.data_path, self.filename)
 
 
 class Controller:
@@ -608,7 +732,7 @@ class DataHandler:
 
 # Runs app and updates every 1000ms.
 # 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
-# App will output error to terminal if calculation time exceeds refresh rate.
+# App will output error to terminal if operation time exceeds refresh rate.
 app = App(1000)
 app.main_thread()
 app.mainloop()
