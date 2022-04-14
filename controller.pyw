@@ -54,6 +54,7 @@ class App(Tk):
         self.config(padx=10, pady=10)
         self.config(background='white')
         self.iconbitmap('assets/uwicon.ico')
+        self.geometry('+100+100')
 
 
         # Create menu bar
@@ -72,20 +73,36 @@ class App(Tk):
         self.config(menu=menubar)
 
 
-        # Channels to create labels for
-        self.channels = [0, 1, 8, 12, 13]
+        # Thermocouple channels to read
+        self.thermocouple_channels = [0, 1, 8, 11]
+
+        # Conductivity channels to read
+        self.conductivity_channels = [2, 3]
 
         # Configure channels to read thermocouples
-        Controller.initialize_thermocouple_read(self.channels)
+        Controller.initialize_thermocouple_read(self.thermocouple_channels)
 
-        # Initializes empty lists for temperature and time to be saved to
-        self.temperature = [[] for _ in self.channels]
+        # Configure channels to read voltage from conductivity channels
+        Controller.initialize_analog_read(self.conductivity_channels)
+
+        # Initializes empty lists for temperature, conductivity, and time to be saved to
+        self.temperature = [[] for _ in self.thermocouple_channels]
+        self.conductivity = [[] for _ in self.conductivity_channels]
         self.runtime = []
 
-        # Create plot
-        self.plot_frame = Frame(self)
-        self.plot_frame.pack()
+        # Create main frame for holding plots
+        self.main_plot_frame = Frame(self)
+        self.main_plot_frame.pack()
+
+        # Create thermocouple plot
+        self.plot_frame = Frame(self.main_plot_frame)
+        self.plot_frame.pack(side=LEFT)
         self.plot = Plot(self.plot_frame, "Channel Temperature Data", "Time (s)", "Temperature (°C)", figure_size=(4, 6))
+
+        # Create conductivity plot
+        self.conductivity_plot_frame = Frame(self.main_plot_frame)
+        self.conductivity_plot_frame.pack(side=RIGHT)
+        self.conductivity_plot = Plot(self.conductivity_plot_frame, "Channel Conductivity Data", "Time (s)", "Conductivity (mS)", figure_size=(4, 6))
 
 
         # Create recording label on bottom
@@ -246,25 +263,50 @@ class App(Tk):
         Main runtime method that contains all code to execute during app runtime.
         """
         # Gets temperatures
-        current_temperatures_not_rounded = Controller.thermocouple_instantaneous_read(self.channels)
+        current_temperatures_not_rounded = Controller.thermocouple_instantaneous_read(self.thermocouple_channels)
 
         # Rounds temperatures
         current_temperatures = np.round(current_temperatures_not_rounded, 1)
 
+
+        # Gets voltage from conductivity channels
+        current_conductivity_V = Controller.analog_read(self.conductivity_channels)
+
+        # Converts voltages to mA with the basis of a 220 Ohm resistor
+        current_conductivity_mA = [x / 220 * 1000 for x in current_conductivity_V]
+
+        # Uses calibration equation to convert mA to mS and rounds to 1 decimal place
+        current_conductivity_mS = [round(12.64168 * x - 49.99568, 1) for x in current_conductivity_mA]
+
+
         # Appends temperature data to main array
-        for x in range(len(self.channels)):
+        for x in range(len(self.thermocouple_channels)):
             # Appends current temperatures to a 2D list
             self.temperature[x].append(current_temperatures[x])
 
-        # Formats data for plotting - format is a tuple as follows: (x, y, label)
+        # Appends conductivity data to main array
+        for x in range(len(self.conductivity_channels)):
+            # Appends current temperatures to a 2D list
+            self.conductivity[x].append(current_conductivity_mS[x])
+
+
+        # Formats thermocouple data for plotting - format is a tuple as follows: (x, y, label)
         data = []
-        for x in range(len(self.channels)):
+        for x in range(len(self.thermocouple_channels)):
             data.append((self.runtime,
                          self.temperature[x],
-                         "Channel " + str(self.channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
+                         "Channel " + str(self.thermocouple_channels[x]) + ": " + str(current_temperatures[x]) + "°C"))
 
-        # Updates plot
+        # Formats thermocouple data for plotting - format is a tuple as follows: (x, y, label)
+        conductivity_data = []
+        for x in range(len(self.conductivity_channels)):
+            conductivity_data.append((self.runtime,
+                         self.conductivity[x],
+                         "Channel " + str(self.conductivity_channels[x]) + ": " + str(current_conductivity_mS[x]) + "mS"))
+
+        # Updates plots
         self.plot.update_data(data)
+        self.conductivity_plot.update_data(conductivity_data)
 
 
         # If data recording is enabled
@@ -276,10 +318,16 @@ class App(Tk):
             # Initializes DataFrame
             df = pd.DataFrame()
 
-            # Writes data to df DataFrame
+            # Writes runtime to df DataFrame
             df['Runtime (s)'] = [x - data_offset for x in self.runtime[data_offset:]]
-            for x in range(len(self.channels)):
-                df['Channel ' + str(self.channels[x]) + ' (°C)'] = self.temperature[x][data_offset:]
+
+            # Writes thermocouple data to df DataFrame
+            for x in range(len(self.thermocouple_channels)):
+                df['Channel ' + str(self.thermocouple_channels[x]) + ' (°C)'] = self.temperature[x][data_offset:]
+
+            # Writes conductivity data to df Dataframe
+            for x in range(len(self.conductivity_channels)):
+                df['Channel ' + str(self.conductivity_channels[x]) + ' (mS)'] = self.conductivity[x][data_offset:]
 
             # Outputs DataFrame to Excel file
             DataHandler.export(df, self.data_path, self.filename)
@@ -289,84 +337,8 @@ class Controller:
     """
     Set of functions to interact with MCC control board.
     """
-
     @staticmethod
-    def initialize_read_voltage(channel, board_num=0, rate=60):
-        """
-        Initializes channel to read voltage.
-
-        :param board_num: Board Number
-        :param channel: Channel to initialize - either int or list of ints
-        :param rate: Rate in hertz of how many scans per second
-        """
-        if type(channel) == int:
-            # Configure to read voltage
-            ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.ADCHANTYPE,
-                AiChanType.VOLTAGE)
-            # Set to differential input mode
-            ul.a_chan_input_mode(board_num, channel, AnalogInputMode.DIFFERENTIAL)
-            # Set data rate to 60Hz
-            ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.ADDATARATE, rate)
-
-        if type(channel) == list:
-            for i in channel:
-                # Configure to read voltage
-                ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.ADCHANTYPE,
-                    AiChanType.VOLTAGE)
-                # Set to differential input mode
-                ul.a_chan_input_mode(board_num, i, AnalogInputMode.DIFFERENTIAL)
-                # Set data rate to 60Hz
-                ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.ADDATARATE, rate)
-
-    @staticmethod
-    def voltage_instantaneous_read(channel, board_num=0, ai_range=ULRange.BIP5VOLTS, options=0):
-        """
-        Reads voltage from desired channel or channels.
-
-        :param board_num: Board number
-        :param channel: Desired channel to read
-        :param ai_range: Voltage Range
-        :param options: For future use
-        :return: Voltage from Channel
-        """
-        if type(channel) is int:
-            return ul.v_in_32(board_num, channel, ai_range, options)
-
-        if type(channel) is list:
-            return [ul.v_in_32(board_num, x, ai_range, options) for x in channel]
-
-    @staticmethod
-    def convert_voltage_to_temperature(voltage, channel):
-        """
-        Converts voltage in V to temperature in degrees Celsius.
-
-        :param channel: Channel read so calibration value can be applied
-        :param voltage: Voltage in V
-        :return: Temperature in degrees C
-        """
-        # Calibration values for thermocouples
-        channel_calibration_values = {8: [0.0012796027, 0, 0.1331613]}
-
-        calibration = channel_calibration_values[channel]
-        return np.round(24.316564 * (voltage + calibration[0]) * 1000 - 1.090500 - calibration[1], 2)
-
-    @staticmethod
-    def calibrate(actual_temperature, average_voltage):
-        """
-        Calibration function designed to calibrate K-type thermocouples.
-
-        :param actual_temperature: Real temperature taken from separate device.
-        :param average_voltage: Average voltage of the thermocouple
-        :return: Returns value to add to the voltage output of the thermocouple to obtain a correct reading.
-        """
-        return (actual_temperature * 0.04111467 + 0.05058242) / 1000 - average_voltage
-
-    @staticmethod
-    def initialize_thermocouple_read(channel, board_num=0, rate=60, thermocouple_type=TcType.K):
+    def initialize_thermocouple_read(channel: int | list[int], board_num=0, rate=60, thermocouple_type=TcType.K):
 
         # If channel is single value setup single channel
         if type(channel) is int:
@@ -406,7 +378,7 @@ class Controller:
                     InfoType.BOARDINFO, board_num, i, BoardInfo.ADDATARATE, rate)
 
     @staticmethod
-    def thermocouple_instantaneous_read(channel, board_num=0):
+    def thermocouple_instantaneous_read(channel: int | list[int], board_num=0):
         """
         Reads thermocouple.
 
@@ -426,29 +398,93 @@ class Controller:
             return [ul.t_in(board_num, x, TempScale.CELSIUS, options) for x in channel]
 
     @staticmethod
-    def thermocouple_average_read(channel, number_of_runs_to_average, board_num=0):
+    def initialize_analog_read(channel: int | list, board_number=0, rate=60):
         """
-        Function to take average of a specified number of thermocouple readings
-        :param board_num: Board number
-        :param channel: Either single channel or list of channels
-        :param number_of_runs_to_average: Runs to average
-        :return: Either averaged single value or list of thermocouple readings
+        Initializes channels to read by analog
+        :param channel: Channel or list of channels to be initialized
+        :param board_number: Number of board
+        :param rate: Rate in hertz at which channel is read.
         """
-        # If channel is single value
+
+        # If channel is a single channel
+        if type(channel) is int:
+            # configure the channel for voltage
+            ul.set_config(InfoType.BOARDINFO, board_number, channel, BoardInfo.ADCHANTYPE, AiChanType.VOLTAGE)
+
+            # Set channel to differential mode
+            ul.a_chan_input_mode(board_number, channel, AnalogInputMode.DIFFERENTIAL)
+
+            # Set channel rate
+            ul.set_config(InfoType.BOARDINFO, board_number, channel, BoardInfo.ADDATARATE, rate)
+
+        # If channel is a list of channels
+        if type(channel) is list:
+
+            for x in channel:
+                # configure the channel for voltage
+                ul.set_config(InfoType.BOARDINFO, board_number, x, BoardInfo.ADCHANTYPE, AiChanType.VOLTAGE)
+
+                # Set channel to differential mode
+                ul.a_chan_input_mode(board_number, x, AnalogInputMode.DIFFERENTIAL)
+
+                # Set channel rate
+                ul.set_config(InfoType.BOARDINFO, board_number, x, BoardInfo.ADDATARATE, rate)
+
+    @staticmethod
+    def analog_read(channel: int | list, board_number=0):
+        """
+        Function to read analog data from specified channels
+        :param channel: Either int of list of ints that specifies channel to read.
+        :param board_number: Board Number
+        :return: Returns voltage of channels as either a single float or a list of floats
+        """
+
+        # If channels is a single channel
         if type(channel) is int:
 
-            # Creates 1D array of temperature vales with length equal to number_of_runs_to_average, then returns average
-            temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for _ in
-                                 range(number_of_runs_to_average)]
-            return np.average(temperature_array)
+            # Initialize array to average data points
+            voltage = []
 
+            # Get values for 5-point average
+            for _ in range(5):
+                # Read data from the channel:
+                value_counts = ul.a_in_32(board_number, channel, ULRange.BIP20VOLTS, 0)
+
+                # Convert from counts to volts
+                value_volts = ul.to_eng_units_32(board_number, ULRange.BIP20VOLTS, value_counts)
+
+                # Add voltage to main array for average calculation
+                voltage.append(value_volts)
+
+            return np.average(voltage)
+
+        # If channels is a single channel
         if type(channel) is list:
-            average_temperature_array = []
-            for _ in channel:
-                temperature_array = [Controller.thermocouple_instantaneous_read(channel, board_num) for _ in
-                                     range(number_of_runs_to_average)]
-                average_temperature_array.append(np.average(temperature_array))
-            return average_temperature_array
+
+            # Initialize list to save channels voltage to
+            channel_voltage = []
+
+            for x in channel:
+
+                # Initialize array to average data points
+                voltage = []
+
+                # Get values for 5-point average
+                for _ in range(5):
+                    # Read data from the channel:
+                    value_counts = ul.a_in_32(board_number, x, ULRange.BIP20VOLTS, 0)
+
+                    # Convert from counts to volts
+                    value_volts = ul.to_eng_units_32(board_number, ULRange.BIP20VOLTS, value_counts)
+
+                    # Add voltage value to single array
+                    voltage.append(value_volts)
+
+                # Add 5-point average to respective channel
+                channel_voltage.append(np.average(voltage))
+
+            # Returns array with data from all channels
+            return channel_voltage
 
 
 class Plot(Frame):
@@ -671,7 +707,7 @@ class Plot(Frame):
                 if np.min(x[0]) < x_minimum:
                     x_minimum = np.min(x[0])
 
-                if np.max(x[1]) > y_minimum:
+                if np.max(x[1]) > y_maximum:
                     y_maximum = np.max(x[1])
                 if np.min(x[1]) < y_minimum:
                     y_minimum = np.min(x[1])
@@ -733,6 +769,6 @@ class DataHandler:
 # Runs app and updates every 1000ms.
 # 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
 # App will output error to terminal if operation time exceeds refresh rate.
-app = App(1000)
+app = App(5000)
 app.main_thread()
 app.mainloop()
