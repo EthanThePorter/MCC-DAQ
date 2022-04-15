@@ -787,8 +787,9 @@ class DataHandler:
         writer.close()
 
 
-# Runs app and updates every 1000ms.
-# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations. Use whole numbers.
+# Runs app and updates every 5000ms.
+# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
+# Use whole numbers for fresh rate (i.e. 1000, 2000, 3000, etc)
 # App will output error to terminal if operation time exceeds refresh rate.
 app = App(5000)
 app.main_thread()
