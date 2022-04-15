@@ -9,8 +9,6 @@ import numpy as np
 
 # Used by Plot & App
 from tkinter import *
-from tkinter import ttk
-from tkinter import messagebox
 
 # Used by Plot
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -22,7 +20,6 @@ import time
 
 # Used by DataHandler
 import pandas as pd
-import sys
 import os
 import xlsxwriter
 import subprocess
@@ -50,18 +47,23 @@ class App(Tk):
 
 
         # Window settings
+        self.geometry('+500+200')
         self.title('MCC-DAQ')
-        self.config(padx=10, pady=10)
         self.config(background='white')
         self.iconbitmap('assets/uwicon.ico')
-        self.geometry('+100+100')
+
+
+        # Initialize path and filename for data saving
+        self.data_path = "C:\\Users\\labuser\\Desktop\\MCC-DAQ"
+        self.filename = "MCC-DAQ Data"
 
 
         # Create menu bar
         menubar = Menu(self)
 
         filemenu = Menu(menubar, tearoff=0)
-        filemenu.add_command(label="Data Path", command=self.open_data_window)
+        filemenu.add_command(label="Configure Data Path", command=self.open_data_window)
+        filemenu.add_command(label="Open Data Path", command=self.open_data_path)
         menubar.add_cascade(label="File", menu=filemenu)
 
         datamenu = Menu(menubar, tearoff=0)
@@ -69,7 +71,7 @@ class App(Tk):
         datamenu.add_command(label="Stop Data Recording", command=self.end_recording)
         menubar.add_cascade(label="Record Data", menu=datamenu)
 
-        # Add to main frame
+        # Add menu to main frame
         self.config(menu=menubar)
 
 
@@ -90,9 +92,10 @@ class App(Tk):
         self.conductivity = [[] for _ in self.conductivity_channels]
         self.runtime = []
 
+
         # Create main frame for holding plots
         self.main_plot_frame = Frame(self)
-        self.main_plot_frame.pack()
+        self.main_plot_frame.pack(padx=10)
 
         # Create thermocouple plot
         self.plot_frame = Frame(self.main_plot_frame)
@@ -106,23 +109,26 @@ class App(Tk):
 
 
         # Create recording label on bottom
-        self.recording_label = Label(self, text="", background='white')
-        self.recording_label.pack(side=LEFT, pady=5)
+        self.recording_label = Label(self, text="", background='white', bd=1, relief=SUNKEN, anchor=W)
+        self.recording_label.pack(side=BOTTOM, pady=(5, 0), fill=X)
+
 
         # Initialize variables for recording
         self.recording_in_progress = False
         self.recording_time_start = 0
 
 
-        # Initialize path and filename for data saving
-        self.data_path = "C:/Users/labuser/Desktop/MCC-DAQ"
-        self.filename = "MCC-DAQ Data"
+    def open_data_path(self):
+        path = os.path.realpath(self.data_path)
+        print(path)
+        os.startfile(path + '\\')
 
 
     def open_data_window(self):
 
         # Create a Toplevel window
         data_window = Toplevel(self, background='white')
+        data_window.geometry('+500+250')
         data_window.iconbitmap('assets/uwicon.ico')
         data_window.resizable(False, False)
 
@@ -300,9 +306,8 @@ class App(Tk):
         # Formats thermocouple data for plotting - format is a tuple as follows: (x, y, label)
         conductivity_data = []
         for x in range(len(self.conductivity_channels)):
-            conductivity_data.append((self.runtime,
-                         self.conductivity[x],
-                         "Channel " + str(self.conductivity_channels[x]) + ": " + str(current_conductivity_mS[x]) + "mS"))
+            conductivity_data.append((self.runtime, self.conductivity[x],
+                                      "Channel " + str(self.conductivity_channels[x]) + ": " + str(current_conductivity_mS[x]) + "mS"))
 
         # Updates plots
         self.plot.update_data(data)
@@ -315,19 +320,22 @@ class App(Tk):
             # Gets runtime
             data_offset = int(self.recording_time_start)
 
+            # Scales offset to refresh time, so it will correspond to the indices
+            data_offset_scaled = int(data_offset / (self.refresh_time / 1000))
+
             # Initializes DataFrame
             df = pd.DataFrame()
 
             # Writes runtime to df DataFrame
-            df['Runtime (s)'] = [x - data_offset for x in self.runtime[data_offset:]]
+            df['Runtime (s)'] = [x - data_offset for x in self.runtime[data_offset_scaled:]]
 
             # Writes thermocouple data to df DataFrame
             for x in range(len(self.thermocouple_channels)):
-                df['Channel ' + str(self.thermocouple_channels[x]) + ' (°C)'] = self.temperature[x][data_offset:]
+                df['Channel ' + str(self.thermocouple_channels[x]) + ' (°C)'] = self.temperature[x][data_offset_scaled:]
 
             # Writes conductivity data to df Dataframe
             for x in range(len(self.conductivity_channels)):
-                df['Channel ' + str(self.conductivity_channels[x]) + ' (mS)'] = self.conductivity[x][data_offset:]
+                df['Channel ' + str(self.conductivity_channels[x]) + ' (mS)'] = self.conductivity[x][data_offset_scaled:]
 
             # Outputs DataFrame to Excel file
             DataHandler.export(df, self.data_path, self.filename)
@@ -548,6 +556,10 @@ class Plot(Frame):
             """
         super().__init__(master)
 
+        # Makes frame to hold plot
+        self.main_frame = Frame(master, background='white')
+        self.main_frame.pack()
+
         # Style for plots to use
         style.use('seaborn')
 
@@ -615,9 +627,9 @@ class Plot(Frame):
 
 
         # Draws figure
-        self.canvas = FigureCanvasTkAgg(self.figure, master=master)  # A tk.DrawingArea.
+        self.canvas = FigureCanvasTkAgg(self.figure, master=self.main_frame)  # A tk.DrawingArea.
         self.canvas.draw()
-        self.canvas.get_tk_widget().pack()
+        self.canvas.get_tk_widget().pack(ipadx=20)
 
     def clear(self):
         """
@@ -720,7 +732,7 @@ class DataHandler:
     @staticmethod
     def export(data: pd.DataFrame(), output_directory_path: str, filename: str, sheet_name="Sheet1"):
         """
-        Method to export pandas dataframe to Excel file.
+        Method to export pandas dataframe to Excel file. Only compatible with single sheet
         :param data: Data as a pandas DataFrame
         :param output_directory_path: Path to export file to
         :param filename: Name of file
@@ -741,14 +753,23 @@ class DataHandler:
             # Get path
             path = output_directory_path + filename + ".xlsx"
 
+            # Outputs path to terminal
+            print('Data saved to: ' + path)
+
             # Initializes writer
             writer = pd.ExcelWriter(path, engine='xlsxwriter')
 
         # If any error occurs, write file labelled "temp xlsx" instead to project directory
-        except:
+        except Exception as e:
+
+            # Outputs error
+            print(e)
 
             # Get path
             path = "./MCC-DAQ backup/" + "temp.xlsx"
+
+            # Outputs path to terminal
+            print('Data saved to: ' + path)
 
             # Initializes writer
             writer = pd.ExcelWriter(path, engine='xlsxwriter')
@@ -767,7 +788,7 @@ class DataHandler:
 
 
 # Runs app and updates every 1000ms.
-# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
+# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations. Use whole numbers.
 # App will output error to terminal if operation time exceeds refresh rate.
 app = App(5000)
 app.main_thread()
