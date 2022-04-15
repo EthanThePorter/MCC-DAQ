@@ -22,27 +22,28 @@ import time
 import pandas as pd
 import os
 import xlsxwriter
-import subprocess
 
 
 class App(Tk):
 
-    def __init__(self, refresh_time, *args, **kwargs):
+    def __init__(self, refresh_time: int, *args, **kwargs):
         """
-        Main App class
+        Main App class.
+        Application specific initialization code is everything in __init__() from Windows settings down.
+        All runtime code is inside main_update().
 
-        :param refresh_time: Time in ms for refresh
+        :param refresh_time: Time in ms for refresh. Use whole numbers (i.e. 1000, 2000, 5000, etc).
         """
         Tk.__init__(self, *args, **kwargs)
 
-        # Initializes time to update main thread
+        # Initializes refresh rate to update main thread
         self.refresh_time = refresh_time
 
-        # Initializes start time
+        # Initializes application start time
         self.start_time = time.time()
         self.start_time_adjusted = False
 
-        # Initializes variable to account for time lost to rounding
+        # Initializes variable to account for time lost to rounding when regulating app runtime
         self.rounding_time_loss = 0
 
 
@@ -406,7 +407,7 @@ class Controller:
             return [ul.t_in(board_num, x, TempScale.CELSIUS, options) for x in channel]
 
     @staticmethod
-    def initialize_analog_read(channel: int | list, board_number=0, rate=60):
+    def initialize_analog_read(channel: int | list[int], board_number=0, rate=60):
         """
         Initializes channels to read by analog
         :param channel: Channel or list of channels to be initialized
@@ -439,7 +440,7 @@ class Controller:
                 ul.set_config(InfoType.BOARDINFO, board_number, x, BoardInfo.ADDATARATE, rate)
 
     @staticmethod
-    def analog_read(channel: int | list, board_number=0):
+    def analog_read(channel: int | list[int], board_number=0):
         """
         Function to read analog data from specified channels
         :param channel: Either int of list of ints that specifies channel to read.
@@ -543,6 +544,7 @@ class Plot(Frame):
 
             :param master: Frame or Tk to place plot on
             :param data: Data to plot as either a tuple or list. Refer to documentation for formatting. Can be initialized after Plot using Plot.update_data(data)
+
             :param plot_title: Title to be shown on plot - Optional
             :param x_label: abel for x-axis - Optional
             :param y_label: Label for y-axis - Optional
@@ -728,11 +730,14 @@ class Plot(Frame):
 
 
 class DataHandler:
+    """
+    Class for handling application data.
+    """
 
     @staticmethod
     def export(data: pd.DataFrame(), output_directory_path: str, filename: str, sheet_name="Sheet1"):
         """
-        Method to export pandas dataframe to Excel file. Only compatible with single sheet
+        Method to export pandas dataframe to Excel file. Compatible with single dataframe. Auto-fits columns.
         :param data: Data as a pandas DataFrame
         :param output_directory_path: Path to export file to
         :param filename: Name of file
