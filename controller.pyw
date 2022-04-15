@@ -26,6 +26,7 @@ import xlsxwriter
 
 class App(Tk):
 
+
     def __init__(self, refresh_time: int, *args, **kwargs):
         """
         Main App class.
@@ -45,6 +46,9 @@ class App(Tk):
 
         # Initializes variable to account for time lost to rounding when regulating app runtime
         self.rounding_time_loss = 0
+
+        # Initializes runtime array to track each time when main_thread() is executed. Used for data collection and timing.
+        self.runtime = []
 
 
         # Window settings
@@ -88,10 +92,9 @@ class App(Tk):
         # Configure channels to read voltage from conductivity channels
         Controller.initialize_analog_read(self.conductivity_channels)
 
-        # Initializes empty lists for temperature, conductivity, and time to be saved to
+        # Initializes empty lists for temperature and conductivity to be saved to
         self.temperature = [[] for _ in self.thermocouple_channels]
         self.conductivity = [[] for _ in self.conductivity_channels]
-        self.runtime = []
 
 
         # Create main frame for holding plots
@@ -214,6 +217,7 @@ class App(Tk):
         """
         Function that regulates app to ensure consistent refresh time
         """
+
         # Gets start time of main_thread() for making data readout consistent
         update_runtime_start = time.time()
 
@@ -501,6 +505,10 @@ class Plot(Frame):
     def __init__(self, master: Frame | Tk, plot_title="", x_label="", y_label="", data: tuple | list | int = 0, auto_fit=True, follow=120, buffer=3, x_lim: tuple = (0, 1), y_lim: tuple = (0, 1), figure_size=(4, 4), dpi=100):
         """
             Class for plotting data in tkinter.
+            Designed to handle continuous data feed.
+            Will automatically follow data on x-axis by showing most recent 120 points.
+            Plot will automatically scale to fit data on y-axis.
+            A buffer between the y-axis endpoints is automatically created at ± 3 units.
 
             Data to be fed into this class should be formatted as follows:
 
@@ -512,7 +520,7 @@ class Plot(Frame):
 
                 plot = Plot(root, data)
 
-            OR
+            OR - For multiple sets of data
 
                 x = [1, 2, 3, 4, 5]
                 y = [1, 2, 3, 4, 5]
