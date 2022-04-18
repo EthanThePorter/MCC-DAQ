@@ -109,7 +109,7 @@ class App(Tk):
         # Create conductivity plot
         self.conductivity_plot_frame = Frame(self.main_plot_frame)
         self.conductivity_plot_frame.pack(side=RIGHT)
-        self.conductivity_plot = Plot(self.conductivity_plot_frame, "Channel Conductivity Data", "Time (s)", "Conductivity (mS)", figure_size=(4, 6))
+        self.conductivity_plot = Plot(self.conductivity_plot_frame, "Channel Conductivity Data", "Time (s)", "Conductivity (mS)", figure_size=(4, 6), buffer=6)
 
 
         # Create recording label on bottom
@@ -209,8 +209,8 @@ class App(Tk):
             # Set recording to false
             self.recording_in_progress = False
 
-        # Configure label
-        self.recording_label.config(text='Recording Stopped at: ' + str(int(self.runtime[-1])) + "s")
+            # Configure label
+            self.recording_label.config(text='Recording Stopped at: ' + str(int(self.runtime[-1])) + "s")
 
 
     def main_thread(self):
@@ -351,51 +351,51 @@ class Controller:
     Set of functions to interact with MCC control board.
     """
     @staticmethod
-    def initialize_thermocouple_read(channel: int | list[int], board_num=0, rate=60, thermocouple_type=TcType.K):
+    def initialize_thermocouple_read(channel: int | list[int], board_number=0, rate=60, thermocouple_type=TcType.K):
 
         # If channel is single value setup single channel
         if type(channel) is int:
             # Set channel type to TC (thermocouple)
             ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.ADCHANTYPE,
+                InfoType.BOARDINFO, board_number, channel, BoardInfo.ADCHANTYPE,
                 AiChanType.TC)
             # Set thermocouple type to type K
             ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.CHANTCTYPE,
+                InfoType.BOARDINFO, board_number, channel, BoardInfo.CHANTCTYPE,
                 thermocouple_type)
             # Set the temperature scale to Celsius
             ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.TEMPSCALE,
+                InfoType.BOARDINFO, board_number, channel, BoardInfo.TEMPSCALE,
                 TempScale.CELSIUS)
             # Set data rate
             ul.set_config(
-                InfoType.BOARDINFO, board_num, channel, BoardInfo.ADDATARATE, rate)
+                InfoType.BOARDINFO, board_number, channel, BoardInfo.ADDATARATE, rate)
 
         # If channel is list setup every channel in list
         if type(channel) is list:
             for i in channel:
                 # Set channel type to TC (thermocouple)
                 ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.ADCHANTYPE,
+                    InfoType.BOARDINFO, board_number, i, BoardInfo.ADCHANTYPE,
                     AiChanType.TC)
                 # Set thermocouple type to type K
                 ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.CHANTCTYPE,
+                    InfoType.BOARDINFO, board_number, i, BoardInfo.CHANTCTYPE,
                     thermocouple_type)
                 # Set the temperature scale to Celsius
                 ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.TEMPSCALE,
+                    InfoType.BOARDINFO, board_number, i, BoardInfo.TEMPSCALE,
                     TempScale.CELSIUS)
                 # Set data rate
                 ul.set_config(
-                    InfoType.BOARDINFO, board_num, i, BoardInfo.ADDATARATE, rate)
+                    InfoType.BOARDINFO, board_number, i, BoardInfo.ADDATARATE, rate)
 
     @staticmethod
-    def thermocouple_instantaneous_read(channel: int | list[int], board_num=0):
+    def thermocouple_instantaneous_read(channel: int | list[int], board_number=0):
         """
         Reads thermocouple.
 
-        :param board_num: Board number
+        :param board_number: Board number
         :param channel: Desired channel to read
         :return: Temperature in celsius
         """
@@ -404,11 +404,11 @@ class Controller:
 
         # If channel is single value read and return single channel
         if type(channel) is int:
-            return ul.t_in(board_num, channel, TempScale.CELSIUS, options)
+            return ul.t_in(board_number, channel, TempScale.CELSIUS, options)
 
         # If channel is list read and return list for every channel in list
         if type(channel) is list:
-            return [ul.t_in(board_num, x, TempScale.CELSIUS, options) for x in channel]
+            return [ul.t_in(board_number, x, TempScale.CELSIUS, options) for x in channel]
 
     @staticmethod
     def initialize_analog_read(channel: int | list[int], board_number=0, rate=60):
@@ -610,7 +610,6 @@ class Plot(Frame):
                 self.main_plot.set_xlim(limits[0] - self.follow, limits[0])
                 self.main_plot.set_ylim(limits[3] - self.buffer, limits[2] + self.buffer)
 
-
         else:
 
             # Sets axis limits
@@ -626,6 +625,7 @@ class Plot(Frame):
             # Initializes legend in lower right corner
             self.legend = self.main_plot.legend(loc='lower left')
 
+        # If data is a list of tuples
         if type(data) is list:
 
             # Plots multiple sets of data
@@ -743,7 +743,7 @@ class DataHandler:
     """
 
     @staticmethod
-    def export(data: pd.DataFrame(), output_directory_path: str, filename: str, sheet_name="Sheet1"):
+    def export(data: pd.DataFrame, output_directory_path: str, filename: str, sheet_name="Sheet1"):
         """
         Method to export pandas dataframe to Excel file. Compatible with single dataframe. Auto-fits columns.
         :param data: Data as a pandas DataFrame
