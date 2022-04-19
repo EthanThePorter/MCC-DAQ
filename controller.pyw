@@ -33,6 +33,12 @@ class App(Tk):
         Application specific initialization code is everything in __init__() from Windows settings down.
         All runtime code is inside main_update().
 
+        To add/remove thermocouple channels change self.thermocouple_channels
+        To add/remove conductivity channel change self.conductivity_channels
+        To add/remove VDAC pump channels change self.pump_VDAC_channels.
+
+        Calibration values are required for pump VDAC channels. See Pump Calibration spreadsheet in calibrations directory
+
         :param refresh_time: Time in ms for refresh. Use whole numbers (i.e. 1000, 2000, 5000, etc).
         """
         Tk.__init__(self, *args, **kwargs)
@@ -76,15 +82,28 @@ class App(Tk):
         datamenu.add_command(label="Stop Data Recording", command=self.end_recording)
         menubar.add_cascade(label="Record Data", menu=datamenu)
 
+        pumpmenu = Menu(menubar, tearoff=0)
+        pumpmenu.add_command(label="Pump Flowrates", command=self.open_pump_control)
+        menubar.add_cascade(label="Pump Control", menu=pumpmenu)
+
         # Add menu to main frame
         self.config(menu=menubar)
 
 
         # Thermocouple channels to read
-        self.thermocouple_channels = [0, 1, 8, 11]
+        self.thermocouple_channels = [0, 1, 8]
 
         # Conductivity channels to read
         self.conductivity_channels = [2, 3]
+
+        # Pump VDAC channels to control and calibration values.
+        # Each VDAC channel requires calibration values.
+        # Calibration is a linear equation with first value in tuple being slope, and second is y-intercept.
+        # Values are mL/min for flow rate and volts for voltage.
+        # See attached pump calibration spreadsheet for details.
+        self.pump_VDAC_channels = [1]
+        self.pump_calibration = {1: (0.0492921, 2.4081398)}
+
 
         # Configure channels to read thermocouples
         Controller.initialize_thermocouple_read(self.thermocouple_channels)
@@ -92,9 +111,14 @@ class App(Tk):
         # Configure channels to read voltage from conductivity channels
         Controller.initialize_analog_read(self.conductivity_channels)
 
-        # Initializes empty lists for temperature and conductivity to be saved to
+
+        # Initializes empty lists for temperature, conductivity, and flowrate plot values to be saved to
         self.temperature = [[] for _ in self.thermocouple_channels]
         self.conductivity = [[] for _ in self.conductivity_channels]
+        self.flowrates = [[] for _ in self.pump_VDAC_channels]
+
+        # Initialize empty dict of zeroes for current pump flowrates
+        self.pump_flowrates = {x: 0 for x in self.pump_VDAC_channels}
 
 
         # Create main frame for holding plots
@@ -108,8 +132,13 @@ class App(Tk):
 
         # Create conductivity plot
         self.conductivity_plot_frame = Frame(self.main_plot_frame)
-        self.conductivity_plot_frame.pack(side=RIGHT)
+        self.conductivity_plot_frame.pack(side=LEFT)
         self.conductivity_plot = Plot(self.conductivity_plot_frame, "Channel Conductivity Data", "Time (s)", "Conductivity (mS)", figure_size=(4, 6), buffer=6)
+
+        # Create pump plot
+        self.pump_plot_frame = Frame(self.main_plot_frame)
+        self.pump_plot_frame.pack(side=LEFT)
+        self.pump_plot = Plot(self.pump_plot_frame, "Pump Flowrate Data", "Time (s)", "Flowrate (mL/min)", figure_size=(4, 6), buffer=6)
 
 
         # Create recording label on bottom
@@ -165,8 +194,18 @@ class App(Tk):
         apply_button.config(width=20)
         apply_button.pack(padx=10, pady=10)
 
+        # Binds enter key to close window
+        data_window.bind('<Return>', lambda e: self.close_data_window(data_window, data_path_entry.get(), filename_entry.get()))
+
 
     def close_data_window(self, window, path, filename):
+        """
+        Closes data path window.
+
+        :param window: Window to close
+        :param path: Path to save file to
+        :param filename: Name of data file
+        """
 
         # Cleans path and filename
         cleaned_path = path.strip()
@@ -211,6 +250,121 @@ class App(Tk):
 
             # Configure label
             self.recording_label.config(text='Recording Stopped at: ' + str(int(self.runtime[-1])) + "s")
+
+
+    def open_pump_control(self):
+        """
+        Opens window to control pump.
+        Each pump has a label and entry automatically generated for them from self.pump_VDAC_channels
+        """
+
+        # Create a Toplevel window
+        pump_window = Toplevel(self, background='white')
+        pump_window.geometry('+500+250')
+        pump_window.iconbitmap('assets/uwicon.ico')
+        pump_window.resizable(False, False)
+
+        # Create a frame to store entry boxes and labels in
+        flowrate_entry_frame = Frame(pump_window, background='white')
+        flowrate_entry_frame.pack()
+
+        # Initialize dict of channels and entry boxes
+        pump_window.entries = []
+
+        # Make entries and labels from self.pump_VDAC_channels
+        for i in range(len(self.pump_VDAC_channels)):
+
+            # Creates tuple command for entry box validation
+            pump_validation = (pump_window.register(self.validate_number_range), 150, 0, "%P")
+            # Creates entry box
+            pump_entry = Entry(flowrate_entry_frame, validate='all', background='white', width=25, validatecommand=pump_validation)
+            # Inserts 0 as default value for pumps
+            pump_entry.insert(END, self.pump_flowrates[self.pump_VDAC_channels[i]])
+            # Adds to grid
+            pump_entry.grid(row=i, column=1, padx=10, pady=10)
+            # Adds entry to list for later reading by apply button and "Enter" key binding.
+            pump_window.entries.append(pump_entry)
+
+            # Labels for pumps
+            pump_label = Label(flowrate_entry_frame, text=f"Pump {self.pump_VDAC_channels[i]} Flowrate (0-150mL/min)", background='white')
+            pump_label.grid(row=i, column=0, padx=10, pady=20)
+
+
+        # Button for applying changes
+        apply_button = Button(pump_window, text='Apply', command=lambda: self.close_pump_control(pump_window,
+                                                                                                 {self.pump_VDAC_channels[x]: float(pump_window.entries[x].get()) for x in range(len(self.pump_VDAC_channels))}))
+        apply_button.config(width=20)
+        apply_button.pack(padx=50, pady=10)
+
+
+        # Binds enter key to close window
+        pump_window.bind('<Return>', lambda e: self.close_pump_control(pump_window,
+                                                                       {self.pump_VDAC_channels[x]: float(pump_window.entries[x].get()) for x in range(len(self.pump_VDAC_channels))}))
+
+
+    def close_pump_control(self, window, flowrates: dict):
+        """
+        Method to close pump control window and update flowrate values.
+
+        :param window: Window to close
+        :param flowrates: Dictionary of flowrates of the form: {channel_number: flowrate_value, ...}
+        """
+
+        # For every channel f in dict flowrates
+        for f in flowrates:
+
+            # Add updates flowrate value to main dictionary for adding to plot
+            self.pump_flowrates[f] = flowrates[f]
+
+            # Sets to 0 voltage if flowrate is 0
+            if flowrates[f] == 0:
+                # Turns off pump f
+                Controller.analog_out(f, 0)
+
+            # If not zero, sets flowrate to amount
+            else:
+
+                # Sets pump on channel f to desired flowrate. Converts mL/min to V from calibration dict.
+                Controller.analog_out(f, flowrates[f] * self.pump_calibration[f][0] + self.pump_calibration[f][1])
+
+        # Closes popup
+        window.destroy()
+
+
+    @staticmethod
+    def validate_number_range(maximum, minimum, value):
+        """
+        Function to validate numbers to ensure that they are within a certain range. Used for tkinter entry  boxes.
+
+        :param maximum: Maximum allowed number.
+        :param minimum: Minimum allowed number
+        :param value: Input variable to check
+        :return:
+        """
+
+        try:
+            if value == "":
+                return True
+            if float(value) < float(minimum):
+                return False
+            elif float(value) > float(maximum):
+                return False
+            else:
+                return True
+        except:
+            return False
+
+
+    def on_closing(self):
+        """
+        Method that handles the application being closed. Turns all pumps off.
+        """
+        for c in self.pump_VDAC_channels:
+            # Turns off pump on channel c
+            Controller.analog_out(c, 0)
+
+        # Closes application
+        self.destroy()
 
 
     def main_thread(self):
@@ -300,6 +454,11 @@ class App(Tk):
             # Appends current temperatures to a 2D list
             self.conductivity[x].append(current_conductivity_mS[x])
 
+        # Appends flowrates to main array
+        for x in range(len(self.pump_VDAC_channels)):
+            # Appends current temperatures to a 2D list
+            self.flowrates[x].append(self.pump_flowrates[self.pump_VDAC_channels[x]])
+
 
         # Formats thermocouple data for plotting - format is a tuple as follows: (x, y, label)
         data = []
@@ -314,9 +473,17 @@ class App(Tk):
             conductivity_data.append((self.runtime, self.conductivity[x],
                                       "Channel " + str(self.conductivity_channels[x]) + ": " + str(current_conductivity_mS[x]) + "mS"))
 
+        # Formats thermocouple data for plotting - format is a tuple as follows: (x, y, label)
+        flowrate_data = []
+        for x in range(len(self.pump_VDAC_channels)):
+            flowrate_data.append((self.runtime, self.flowrates[x],
+                                  "VDAC Channel " + str(self.pump_VDAC_channels[x]) + ": " + str(self.pump_flowrates[self.pump_VDAC_channels[x]]) + "mL/ms"))
+
+
         # Updates plots
         self.plot.update_data(data)
         self.conductivity_plot.update_data(conductivity_data)
+        self.pump_plot.update_data(flowrate_data)
 
 
         # If data recording is enabled
@@ -342,6 +509,11 @@ class App(Tk):
             for x in range(len(self.conductivity_channels)):
                 df['Channel ' + str(self.conductivity_channels[x]) + ' (mS)'] = self.conductivity[x][data_offset_scaled:]
 
+            # Writes flowrate data to df DataFrame
+            for x in range(len(self.pump_VDAC_channels)):
+                df['VDAC Channel ' + str(self.pump_VDAC_channels[x]) + ' (mL/min)'] = self.flowrates[x][
+                                                                                data_offset_scaled:]
+
             # Outputs DataFrame to Excel file
             DataHandler.export(df, self.data_path, self.filename)
 
@@ -352,6 +524,14 @@ class Controller:
     """
     @staticmethod
     def initialize_thermocouple_read(channel: int | list[int], board_number=0, rate=60, thermocouple_type=TcType.K):
+        """
+        Initialize desired channels to read thermocouples of a certain type.
+
+        :param channel: Desired channel or channels to read
+        :param board_number: Number of board from InstaCal
+        :param rate: Reading rate in Hertz
+        :param thermocouple_type: Type of thermocouple. Use TcType.X for type X thermocouple.
+        """
 
         # If channel is single value setup single channel
         if type(channel) is int:
@@ -413,7 +593,8 @@ class Controller:
     @staticmethod
     def initialize_analog_read(channel: int | list[int], board_number=0, rate=60):
         """
-        Initializes channels to read by analog
+        Initializes channels to read by analog.
+
         :param channel: Channel or list of channels to be initialized
         :param board_number: Number of board
         :param rate: Rate in hertz at which channel is read.
@@ -446,7 +627,8 @@ class Controller:
     @staticmethod
     def analog_read(channel: int | list[int], board_number=0):
         """
-        Function to read analog data from specified channels
+        Function to read analog data from specified channels.
+
         :param channel: Either int of list of ints that specifies channel to read.
         :param board_number: Board Number
         :return: Returns voltage of channels as either a single float or a list of floats
@@ -498,6 +680,33 @@ class Controller:
 
             # Returns array with data from all channels
             return channel_voltage
+
+    @staticmethod
+    def analog_out(channel: int | list[int], voltage: float, board_number=0):
+        """
+        Method to set channel to output an analog voltage.
+
+        :param channel: Channel to set
+        :param voltage: Desired Voltage
+        :param board_number: Board to Control
+        """
+
+        # If single channel is entered
+        if type(channel) is int:
+
+            # Converts voltage to MCC counts and sets channel
+            a_out_counts = ul.from_eng_units(board_number, ULRange.BIP10VOLTS, voltage)
+            ul.a_out(board_number, channel, ULRange.BIP10VOLTS, a_out_counts)
+
+        # If list of channels in entered
+        if type(channel) is list:
+
+            # For each channel in list
+            for c in channel:
+
+                # Converts voltage to MCC counts and sets channel
+                a_out_counts = ul.from_eng_units(board_number, ULRange.BIP10VOLTS, voltage)
+                ul.a_out(board_number, c, ULRange.BIP10VOLTS, a_out_counts)
 
 
 class Plot(Frame):
@@ -801,9 +1010,12 @@ class DataHandler:
 
 
 # Runs app and updates every 5000ms.
-# 1000ms is the minimum recommended refresh time as it takes about 600-800ms to perform operations.
+# 5000ms is the minimum recommended refresh time as it takes about 4000ms to perform operations.
 # Use whole numbers for fresh rate (i.e. 1000, 2000, 3000, etc)
 # App will output error to terminal if operation time exceeds refresh rate.
 app = App(5000)
+# Sets handle for application closing event
+app.protocol("WM_DELETE_WINDOW", app.on_closing)
+# Runs main app thread during runtime
 app.main_thread()
 app.mainloop()
