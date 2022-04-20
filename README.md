@@ -1,7 +1,7 @@
 # Introduction
 This software was designed to read data from a Measurement Computing Company (MCC) board, as well as use it to control a number of pumps. Analog input channels on the board are used to read thermocouples and conductivity probes. Analog output channels (VDAC) are used to control the pumps.
 
-The core software behind this application was designed to be reusable. For more information [Click Here](#Code-Summary).
+The core software behind this application was designed to be reusable. For more information [Click Here](#Code-Reusability).
 
 # Usage
 
@@ -44,8 +44,18 @@ To add another pump connected to **VDAC Channel 3** with a calibration curve slo
 self.pump_VDAC_channels = [2, 3]
 self.pump_calibration = {2: (0.049, 2.41), 3: (0.056, 3.51)}
 ```
-
 # Code Summary
+The `App` class contains the initialization and runtime code for the app, in addition to all the functionality behind the GUI. All initialization code can be found in the `__init__()` class. Runtime code can be found in the `main_update()` method. Any code to be run on application exit is present in the `on_closing()` method. All other methods support the rest of the functionality of the app.
+
+The `Controller` class handles the bulk of the code required to interact with the MCC board. Any thermocouple and analog reads, or analog outs are performed using this class.
+
+The `Plot` class handles all the code behind the plots used in this application. It was designed to handle continuous data. 
+
+The `DataHandler` class contains all the code behind exporting the data collected by the application. It allows for the export of a single pandas `DataFrame` as a spreadsheet. It includes features such as the autofitting of columns and the backing up of data to the project directory if any errors are encountered. 
+
+For specific information, read the classes documentation in the `controller.pyw` file.
+
+# Code Reusability
 The code for this application was designed to be reusable. The `Controller`, `Plot`, and `DataHandler` classes are all standalone and can be used separately. The `App` class contains most the application-specific code. The following code represents the core components of the `App` class that could be used to build a new application. 
 
 * Application initialization code can be entered into the `__init__()` method.
