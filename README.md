@@ -165,9 +165,9 @@ class App(Tk):
         # Enter code to run during application runtime here.
 
 
-# Runs app and updates every 5000ms.
+# Runs app and updates every 1000ms.
 # App will output error to terminal if operation time exceeds refresh rate.
-app = App(5000)
+app = App(1000)
 # Sets handle for application closing event
 app.protocol("WM_DELETE_WINDOW", app.on_closing)
 # Runs main app thread during runtime
